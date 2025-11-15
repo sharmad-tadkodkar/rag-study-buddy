@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  api:
+    build: .
+    container_name: rag_poc_api
+    restart: unless-stopped
+    volumes:
+      - ./app:/app/app
+      - ./data:/data
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  chroma:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: chroma_server
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data/chroma:/data/chroma
+volumes:
+  pgdata:
