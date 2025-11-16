@@ -174,7 +174,7 @@ def main():
     Returns:
         None"""
     st.set_page_config(page_title="StudyBuddy", page_icon=":microscope:")
-    st.header("Study Insight Retrieval System")
+    st.header("Your Personal Study Buddy :microscope:")
     
     # Initialize chat history
     if "messages" not in st.session_state:
@@ -218,7 +218,7 @@ def main():
 
     #         else:
     #             st.warning("Please enter your Gemini API key to proceed.")
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    gemini_api_key = st.secrets["GEMINI_API_KEY"]
     if gemini_api_key:
         st.session_state.gemini_api_key = gemini_api_key
         
