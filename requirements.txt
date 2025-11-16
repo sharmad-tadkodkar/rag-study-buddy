@@ -8,3 +8,4 @@ sentence-transformers
 PyPDF2
 python-dotenv
 pypdf
+st_copy_to_clipboard
