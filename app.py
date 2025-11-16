@@ -9,15 +9,21 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
+from st_copy_to_clipboard import st_copy_to_clipboard
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 
 # Initialize embedding model
-embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
 
-# Initialize pharma database
-db = Chroma(collection_name="pharma_database",
+# Initialize study database
+db = Chroma(collection_name="study_database",
             embedding_function=embedding_model,
-            persist_directory='./pharma_db')
+            persist_directory='./study_db')
 
 def format_docs(docs):
     """Formats a list of document objects into a single string.
@@ -35,8 +41,8 @@ def add_to_db(uploaded_files):
 
     This function checks if any files have been uploaded. If files are uploaded,
     it saves each file to a temporary location, processes the content using a PDF loader,
-    and splits the content into smaller chunks. Each chunk, along with its metadata, 
-    is then added to the database. Temporary files are removed after processing.
+    and splits the content into smaller chunks. These chunks are then added to the 
+    database in batches to avoid timeout errors. Temporary files are removed after processing.
 
     Args:
         uploaded_files (list): A list of uploaded file objects to be processed.
@@ -72,8 +78,13 @@ def add_to_db(uploaded_files):
         )
         st_chunks = st_text_splitter.create_documents(doc_content, doc_metadata)
 
-        # Add chunks to database
-        db.add_documents(st_chunks)
+        # Add chunks to database in batches to avoid timeout errors
+        batch_size = 100  # You can adjust this value
+        for i in range(0, len(st_chunks), batch_size):
+            batch = st_chunks[i:i + batch_size]
+            db.add_documents(batch)
+            # Optional: Add a small delay between batches if you still face issues
+            # import time; time.sleep(1)
 
         # Remove the temporary file after processing
         os.remove(temp_file_path)
@@ -84,7 +95,7 @@ def run_rag_chain(query):
     This function utilizes a RAG chain to answer a given query. It retrieves 
     relevant context using similarity search and then generates a response 
     based on this context using a chat model. The chat model is pre-configured 
-    with a prompt template specialized in pharmaceutical sciences.
+    with a prompt template catered to solve doubts.
 
     Args:
         query (str): The user's question that needs to be answered.
@@ -164,33 +175,57 @@ def main():
         None"""
     st.set_page_config(page_title="StudyBuddy", page_icon=":microscope:")
     st.header("Study Insight Retrieval System")
-
-    query = st.text_area(
-        ":bulb: Enter your query about the study topic:",
-        placeholder="e.g., Explain thermodynamics"
-    )
-
-    if st.button("Submit"):
-        if not query:
-            st.warning("Please ask a question")
-        
-        else:
-            with st.spinner("Thinking..."):
-                result = run_rag_chain(query=query)
-                st.write(result)
-
-    with st.sidebar:
-        st.title("API Keys")
-        gemini_api_key = st.text_input("Enter your Gemini API key:", type="password")
-
-        if st.button("Enter"):
-            if gemini_api_key:
-                st.session_state.gemini_api_key = gemini_api_key
-                st.success("API key saved!")
-
-            else:
-                st.warning("Please enter your Gemini API key to proceed.")
     
+    # Initialize chat history
+    if "messages" not in st.session_state:
+        st.session_state.messages = [
+            {"role": "assistant", "content": "Hello! I'm StudyBuddy. How can I help you with your studies today?"}
+        ]
+
+    # Display chat messages from history on app rerun
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Accept user input
+    if prompt := st.chat_input("What is your question?"):
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        # Display user message in chat message container
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Display assistant response in chat message container
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                response = run_rag_chain(prompt)
+                st.write(response)
+                st_copy_to_clipboard(response, key="copy_response")
+                
+
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    # with st.sidebar:
+    #     st.title("API Keys")
+    #     # gemini_api_key = st.text_input("Enter your Gemini API key:", type="password")
+        
+
+    #     if st.button("Enter"):
+    #         if gemini_api_key:
+    #             st.session_state.gemini_api_key = gemini_api_key
+    #             st.success("API key saved!")
+
+    #         else:
+    #             st.warning("Please enter your Gemini API key to proceed.")
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    if gemini_api_key:
+        st.session_state.gemini_api_key = gemini_api_key
+        
+    else:
+        st.warning("Please enter your Gemini API key to proceed.")
+    
+
     with st.sidebar:
         st.markdown("---")
         pdf_docs = st.file_uploader("Upload your Study materials (Optional) :memo:",
@@ -208,7 +243,7 @@ def main():
                     st.success(":file_folder: Documents successfully added to the database!")
 
     # Sidebar Footer
-    st.sidebar.write("Built with ❤️ by [Sharmad](www.linkedin.com/in/sharmad-tadkodkar-40b20314b)")
+    st.sidebar.write("Built by [Sharmad](www.linkedin.com/in/sharmad-tadkodkar-40b20314b)")
              
 if __name__ == "__main__":
     main()
